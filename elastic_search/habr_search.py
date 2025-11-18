@@ -7,11 +7,35 @@ import json
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Добавляем импорт ML-ранкера
+try:
+    from ml_ranker import MLRelevanceRanker
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+    print("ML-ранкинг недоступен - установите необходимые зависимости")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class HabrSearchEngine:
-    def __init__(self, enable_spell_check=True): # True - спрашивает у пользователя про опечатку, False - не проверяет на опечатки
+    def __init__(self, enable_spell_check=True, enable_ml_ranking=True): # enable_spell_check=True - спрашивает у пользователя про опечатку, False - не проверяет на опечатки
         self.es = Elasticsearch(["http://localhost:9200"])
         self.enable_spell_check = enable_spell_check
+        self.enable_ml_ranking = enable_ml_ranking
+
+        # Инициализируем ML-ранкер если доступен
+        if enable_ml_ranking and ML_AVAILABLE:
+            try:
+                self.ml_ranker = MLRelevanceRanker()
+                print("ML-ранкинг активирован")
+            except Exception as e:
+                print(f"ML-ранкинг недоступен: {e}")
+                self.enable_ml_ranking = False
+        else:
+            self.enable_ml_ranking = False
+
         if not self.es.ping():
             raise ConnectionError("Не удалось подключиться к Elasticsearch")
 
@@ -101,8 +125,12 @@ class HabrSearchEngine:
 
         return True
 
-    def search_articles(self, query, size=10, search_type="simple"):
-        """Поиск статей с различными типами запросов"""
+    def search_articles(self, query, size=10, search_type="simple", use_ml_ranking=None):
+        """Поиск статей с различными типами запросов с возможностью ML-ранжирования"""
+
+        # Определяем использовать ли ML-ранжирование
+        if use_ml_ranking is None:
+            use_ml_ranking = self.enable_ml_ranking
 
         # Обрабатываем точные фразы в кавычках
         if self.is_exact_phrase(query):
@@ -132,6 +160,11 @@ class HabrSearchEngine:
                     body=search_body,
                     size=size
                 )
+
+                # Применяем ML-ранжирование если включено
+                if use_ml_ranking and ML_AVAILABLE:
+                    response = self.ml_ranker.rerank_results(query, response)
+
                 return response
             except Exception as e:
                 logger.error(f"Ошибка поиска точной фразы: {e}")
@@ -240,13 +273,18 @@ class HabrSearchEngine:
                 body=search_body,
                 size=size
             )
+
+            # Применяем ML-ранжирование если включено
+            if use_ml_ranking and ML_AVAILABLE:
+                response = self.ml_ranker.rerank_results(query, response)
+
             return response
         except Exception as e:
             logger.error(f"Ошибка поиска: {e}")
             return None
 
     def format_search_results(self, results):
-        """Форматирует результаты поиска для красивого вывода"""
+        """Форматирует результаты поиска с учетом ML-ранжирования"""
 
         if not results or 'hits' not in results or 'hits' not in results['hits']:
             print("Ничего не найдено")
@@ -260,13 +298,30 @@ class HabrSearchEngine:
         hits = results['hits']['hits']
 
         print(f"\nНайдено результатов: {total}")
+
+        # Показываем тип ранжирования
+        if hasattr(self, 'enable_ml_ranking') and self.enable_ml_ranking:
+            print("Ранжирование: ML-улучшенное")
+        else:
+            print("Ранжирование: стандартное ElasticSearch")
+
         print("=" * 80)
 
         for i, hit in enumerate(hits, 1):
             source = hit['_source']
-            score = hit['_score']
+            # score = hit['_score']
 
-            print(f"\n{i}. [{score:.2f}] {source['title']}")
+            # Показываем разные скоринги в зависимости от типа ранжирования
+            if '_combined_score' in hit:
+                # ML-ранжирование
+                score_display = f"{hit['_combined_score']:.3f} (ML)"
+                ml_info = f", ML: {hit['_ml_score']:.3f}"
+            else:
+                # Стандартное ранжирование
+                score_display = f"{hit['_score']:.2f}"
+                ml_info = ""
+
+            print(f"\n{i}. [{score_display}] {source['title']}")
             print(f"   Автор: {source.get('author', 'Неизвестен')}")
 
             if 'date' in source:
@@ -281,6 +336,11 @@ class HabrSearchEngine:
                 print(f"   Хабы: {', '.join(source['hubs'][:3])}")
             if source.get('tags'):
                 print(f"   Теги: {', '.join(source['tags'][:3])}")
+
+            # Дополнительная информация о скоринге
+            if ml_info:
+                print(f"   Скоринг: ES: {hit['_score']:.2f}{ml_info}")
+
 
             # Выводим подсветку
             if 'highlight' in hit:
@@ -298,14 +358,17 @@ class HabrSearchEngine:
 
 def main():
     try:
-        search_engine = HabrSearchEngine()
-        print("Умная поисковая система Habr")
+        search_engine = HabrSearchEngine(enable_ml_ranking=True)
+        print("Умная поисковая система Habr с ML-ранжированием")
         print("Доступные команды:")
         print("  /exact   - точный поиск (все 100% слов)")
         print("  /simple  - простой поиск (для +2 слов минимум 75% из них)")
         print("  /boost - поиск с бустингом (для +2 слов минимум 75% из них)")
+        print("  /ml_on   - включить ML-ранжирование")
+        print("  /ml_off  - выключить ML-ранжирование")
         print("  /exit    - выход")
         print("\nОсобенности:")
+        print("  - ML-ранжирование на основе обученной модели")
         print("  - Интерактивное исправление опечаток")
         print("  - Поиск точных фраз в кавычках")
         print("  - Умные подсказки")
@@ -316,12 +379,24 @@ def main():
         print('  "точная фраза в кавычках"')
         print('  «русские кавычки тоже работают»')
 
+        ml_enabled = True
+
         while True:
             try:
                 user_input = input("\nВведите запрос: ").strip()
 
                 if user_input.lower() in ['/exit', 'exit', 'quit']:
                     break
+                elif user_input == '/ml_on':
+                    search_engine.enable_ml_ranking = True
+                    ml_enabled = True
+                    print("ML-ранжирование включено")
+                    continue
+                elif user_input == '/ml_off':
+                    search_engine.enable_ml_ranking = False
+                    ml_enabled = False
+                    print("ML-ранжирование выключено")
+                    continue
                 elif user_input.startswith('/exact '):
                     query = user_input[7:]
                     search_type = "exact"
@@ -339,7 +414,7 @@ def main():
                 if not query:
                     continue
 
-                print(f"\nПоиск: '{query}' (режим: {search_type})")
+                print(f"\nПоиск: '{query}' (режим: {search_type}, ML: {'вкл' if ml_enabled else 'выкл'})")
 
                 results = search_engine.search_articles(query, size=10, search_type=search_type)
                 search_engine.format_search_results(results)
