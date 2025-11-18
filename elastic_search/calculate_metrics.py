@@ -179,7 +179,7 @@ if __name__ == "__main__":
         print_detailed_analysis(df, metrics)
 
         # Сохраняем в Excel
-        save_metrics_to_excel(metrics, df)
+        save_metrics_to_excel(metrics, df, "search_metrics_after_ml.xlsx")
 
         # Интерпретация результатов
         print("\nИНТЕРПРЕТАЦИЯ РЕЗУЛЬТАТОВ:")

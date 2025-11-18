@@ -15,9 +15,6 @@ except ImportError:
     ML_AVAILABLE = False
     print("ML-ранкинг недоступен - установите необходимые зависимости")
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 
 class HabrSearchEngine:
     def __init__(self, enable_spell_check=True, enable_ml_ranking=True): # enable_spell_check=True - спрашивает у пользователя про опечатку, False - не проверяет на опечатки

@@ -49,6 +49,9 @@ class SERPCollector:
             for rank, hit in enumerate(hits, 1):
                 source = hit['_source']
 
+                ml_score = hit.get('_ml_score', 0)  # ← используем get для безопасности
+                combined_score = hit.get('_combined_score', 0)  # ← берем значение из hit
+
                 article_data = {
                     'relevance': None,  # ПЕРВЫЙ СТОЛБЕЦ - для ручной разметки
                     'query_id': i,
@@ -56,6 +59,8 @@ class SERPCollector:
                     'search_type': search_type,
                     'rank': rank,
                     'score': float(hit['_score']),
+                    'ml_score': ml_score,
+                    'combined_score': combined_score,
                     'title': source['title'],
                     'url': source['url'],
                     'author': source.get('author', 'Неизвестен'),
@@ -67,7 +72,7 @@ class SERPCollector:
                 query_results.append(article_data)
                 all_articles.append(article_data)
 
-                print(f"  {rank}. [{hit['_score']:.2f}] {source['title'][:70]}...")
+                print(f"  {rank}. _score=[{hit['_score']:.2f}] _ml_score={ml_score:.2f} _combined_score={combined_score:.2f} {source['title'][:70]}...")
 
             all_serp_data[f"{query}_{search_type}"] = {
                 'search_type': search_type,
@@ -91,6 +96,8 @@ class SERPCollector:
                 'search_type',
                 'rank',
                 'score',
+                'ml_score',
+                'combined_score',
                 'title',
                 'url',
                 'author',

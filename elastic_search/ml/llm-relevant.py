@@ -10,8 +10,8 @@ load_dotenv()
 api_key = os.getenv("API_KEY")
 ai_model = "mistralai/Magistral-Small-2506"
 
-xlsx_path_from = "habr_serp_data_llm_with_relevance.xlsx"
-xlsx_path_to = "habr_serp_data_llm_with_relevance.xlsx"
+xlsx_path_from = "all_serp_data_for_ml.xlsx"
+xlsx_path_to = "all_serp_data_for_ml.xlsx"
 
 def make_request(message_text):
     url = "https://api.intelligence.io.solutions/api/v1/chat/completions"
