@@ -38,6 +38,19 @@ def prepare_data(df):
     return df
 
 
+def time_based_split(df, test_size=0.2):
+    # Сортируем по дате
+    df_sorted = df.sort_values('date')
+
+    split_idx = int(len(df_sorted) * (1 - test_size))
+
+    # Разделяем вручную
+    train_df = df_sorted.iloc[:split_idx]
+    test_df = df_sorted.iloc[split_idx:]
+
+    return train_df, test_df
+
+
 def train_logistic_regression(df):
     """Обучаем модель логистической регрессии с учетом запроса"""
 
@@ -52,13 +65,13 @@ def train_logistic_regression(df):
     text_features = ['query_title', 'query_tags', 'query_hubs']
     numeric_features = ['title_length', 'tags_count', 'score']
 
-    X = df[text_features + numeric_features]
-    y = df['relevance']
+    # Разделяем на обучающую и тестовую выборки по времени
+    train_df, test_df = time_based_split(df, test_size=0.2)
 
-    # Разделяем на обучающую и тестовую выборки
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    X_train = train_df[text_features + numeric_features]
+    X_test = test_df[text_features + numeric_features]
+    y_train = train_df['relevance']
+    y_test = test_df['relevance']
 
     # Создаем препроцессор для разных типов признаков
     preprocessor = ColumnTransformer(

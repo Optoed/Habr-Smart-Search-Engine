@@ -205,3 +205,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+elastic_search/search_metrics_after_ml.xlsx
+elastic_search/search_metrics_after_ml.xlsx
+elastic_search/tag_predictor_model.pkl
+elastic_search/tag_vectorizer.pkl
+elastic_search/copy-data-backup/habr_serp_data_llm_with_relevance_old.xlsx
+elastic_search/copy-data-backup/habr_serp_data_llm_with_relevance_refactor.xlsx
+elastic_search/copy-data-backup/habr_serp_data.json
+elastic_search/copy-data-backup/habr_serp_data.xlsx
+elastic_search/copy-data-backup/serp_data_converted_from_json.xlsx
+elastic_search/copy-data-backup/serp_data.json
+elastic_search/search_metrics_after_ml.xlsx
