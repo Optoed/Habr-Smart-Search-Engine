@@ -1,7 +1,7 @@
 from elastic_search.collect_serp_data import SERPCollector
 
 programming_queries = [
-    "python разработка", "python для начинающих", "python машинное обучение", "python веб разработка",
+    "python разработка", "python для начинающих", "python веб разработка",
     "python асинхронное программирование", "python django tutorial", "python flask fastapi",
     "python pandas анализ данных", "python numpy массивы", "python matplotlib визуализация",
     "python scikit-learn ml", "python парсинг данных", "python телеграм бот", "python selenium автоматизация",
@@ -118,7 +118,7 @@ frameworks_queries = [
 ]
 
 devops_queries = [
-    "docker контейнеризация", "docker compose", "docker swarm", "docker kubernetes",
+    "docker compose", "docker swarm", "docker kubernetes",
     "docker best practices", "docker security", "docker multi-stage build",
     "docker volumes", "docker networking", "docker monitoring",
 

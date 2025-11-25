@@ -15,12 +15,20 @@ except ImportError:
     ML_AVAILABLE = False
     print("ML-ранкинг недоступен - установите необходимые зависимости")
 
+# Добавляем импорт предсказателя тегов
+try:
+    from ml.tag_predictor import TagPredictor
+    TAG_PREDICTION_AVAILABLE = True
+except ImportError:
+    TAG_PREDICTION_AVAILABLE = False
+    print("Предсказание тегов недоступно")
 
 class HabrSearchEngine:
-    def __init__(self, enable_spell_check=True, enable_ml_ranking=True): # enable_spell_check=True - спрашивает у пользователя про опечатку, False - не проверяет на опечатки
+    def __init__(self, enable_spell_check=True, enable_ml_ranking=True, enable_tag_prediction=True): # enable_spell_check=True - спрашивает у пользователя про опечатку, False - не проверяет на опечатки
         self.es = Elasticsearch(["http://localhost:9200"])
         self.enable_spell_check = enable_spell_check
         self.enable_ml_ranking = enable_ml_ranking
+        self.enable_tag_prediction = enable_tag_prediction
 
         # Инициализируем ML-ранкер если доступен
         if enable_ml_ranking and ML_AVAILABLE:
@@ -32,6 +40,17 @@ class HabrSearchEngine:
                 self.enable_ml_ranking = False
         else:
             self.enable_ml_ranking = False
+
+        # Инициализируем предсказатель тегов если доступен
+        if enable_tag_prediction and TAG_PREDICTION_AVAILABLE:
+            try:
+                self.tag_predictor = TagPredictor()
+                print("AI-теги активированы")
+            except Exception as e:
+                print(f"AI-теги недоступны: {e}")
+                self.enable_tag_prediction = False
+        else:
+            self.enable_tag_prediction = False
 
         if not self.es.ping():
             raise ConnectionError("Не удалось подключиться к Elasticsearch")
@@ -121,6 +140,11 @@ class HabrSearchEngine:
             return False
 
         return True
+
+    def predict_article_tags(self, title, text):
+        if not self.enable_tag_prediction or not hasattr(self, 'tag_predictor'):
+            return []
+        return self.tag_predictor.predict_tags(title, text)
 
     def search_articles(self, query, size=10, search_type="simple", use_ml_ranking=None):
         """Поиск статей с различными типами запросов с возможностью ML-ранжирования"""
@@ -297,8 +321,14 @@ class HabrSearchEngine:
         print(f"\nНайдено результатов: {total}")
 
         # Показываем тип ранжирования
+        features = []
         if hasattr(self, 'enable_ml_ranking') and self.enable_ml_ranking:
-            print("Ранжирование: ML-улучшенное")
+            features.append("ML-ранжирование")
+        if hasattr(self, 'enable_tag_prediction') and self.enable_tag_prediction:
+            features.append("AI-теги")
+
+        if features:
+            print(f"Функции: {', '.join(features)}")
         else:
             print("Ранжирование: стандартное ElasticSearch")
 
@@ -334,6 +364,15 @@ class HabrSearchEngine:
             if source.get('tags'):
                 print(f"   Теги: {', '.join(source['tags'][:3])}")
 
+
+            # AI-предсказанные теги
+            if self.enable_tag_prediction:
+                text = source.get('text', '')[:1000] # :1000 - опционально : можно поиграться с этим параметром
+                predicted_tags = self.predict_article_tags(source['title'], text)
+                if predicted_tags:
+                    tags_str = ', '.join([f"{tag['tag']} ({tag['confidence']})" for tag in predicted_tags[:3]])
+                    print(f"AI-теги: {tags_str}")
+
             # Дополнительная информация о скоринге
             if ml_info:
                 print(f"   Скоринг: ES: {hit['_score']:.2f}{ml_info}")
@@ -355,7 +394,7 @@ class HabrSearchEngine:
 
 def main():
     try:
-        search_engine = HabrSearchEngine(enable_ml_ranking=True)
+        search_engine = HabrSearchEngine(enable_ml_ranking=True, enable_tag_prediction=True)
         print("Умная поисковая система Habr с ML-ранжированием")
         print("Доступные команды:")
         print("  /exact   - точный поиск (все 100% слов)")
@@ -363,12 +402,17 @@ def main():
         print("  /boost - поиск с бустингом (для +2 слов минимум 75% из них)")
         print("  /ml_on   - включить ML-ранжирование")
         print("  /ml_off  - выключить ML-ранжирование")
+        print("  /tags_on - включить AI-теги")
+        print("  /tags_off - выключить AI-теги")
         print("  /exit    - выход")
+
         print("\nОсобенности:")
         print("  - ML-ранжирование на основе обученной модели")
         print("  - Интерактивное исправление опечаток")
+        print("  - AI-предсказание тегов по содержанию")
         print("  - Поиск точных фраз в кавычках")
         print("  - Умные подсказки")
+
         print("\nПримеры:")
         print("  /exact русы против ящеров")
         print("  /simple пайтон машинное обyчение")
@@ -377,6 +421,7 @@ def main():
         print('  «русские кавычки тоже работают»')
 
         ml_enabled = True
+        tags_enabled = True
 
         while True:
             try:
@@ -393,6 +438,16 @@ def main():
                     search_engine.enable_ml_ranking = False
                     ml_enabled = False
                     print("ML-ранжирование выключено")
+                    continue
+                elif user_input == '/tags_on':
+                    search_engine.enable_tag_prediction = True
+                    tags_enabled = True
+                    print("AI-теги включены")
+                    continue
+                elif user_input == '/tags_off':
+                    search_engine.enable_tag_prediction = False
+                    tags_enabled = False
+                    print("AI-теги выключены")
                     continue
                 elif user_input.startswith('/exact '):
                     query = user_input[7:]
@@ -411,7 +466,15 @@ def main():
                 if not query:
                     continue
 
-                print(f"\nПоиск: '{query}' (режим: {search_type}, ML: {'вкл' if ml_enabled else 'выкл'})")
+                features = []
+                if ml_enabled:
+                    features.append("ML")
+                if tags_enabled:
+                    features.append("AI-теги")
+
+                features_str = f" ({', '.join(features)})" if features else ""
+
+                print(f"\nПоиск: '{query}' (режим: {search_type}{features_str})")
 
                 results = search_engine.search_articles(query, size=10, search_type=search_type)
                 search_engine.format_search_results(results)

@@ -67,6 +67,7 @@ class SERPCollector:
                     'date': source.get('date', ''),
                     'hubs': ', '.join(source.get('hubs', [])),
                     'tags': ', '.join(source.get('tags', [])),
+                    'text': source['text'],
                 }
 
                 query_results.append(article_data)
@@ -103,7 +104,8 @@ class SERPCollector:
                 'author',
                 'date',
                 'hubs',
-                'tags'
+                'tags',
+                'text'
             ]
 
             df = pd.DataFrame(all_articles)
