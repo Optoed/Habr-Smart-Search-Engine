@@ -24,11 +24,12 @@ except ImportError:
     print("Предсказание тегов недоступно")
 
 class HabrSearchEngine:
-    def __init__(self, enable_spell_check=True, enable_ml_ranking=True, enable_tag_prediction=True): # enable_spell_check=True - спрашивает у пользователя про опечатку, False - не проверяет на опечатки
+    def __init__(self, enable_spell_check=True, enable_ml_ranking=True, enable_tag_prediction=True, enable_rubert_tag_prediction=True): # enable_spell_check=True - спрашивает у пользователя про опечатку, False - не проверяет на опечатки
         self.es = Elasticsearch(["http://localhost:9200"])
         self.enable_spell_check = enable_spell_check
         self.enable_ml_ranking = enable_ml_ranking
         self.enable_tag_prediction = enable_tag_prediction
+        self.enable_rubert_tag_prediction = enable_rubert_tag_prediction
 
         # Инициализируем ML-ранкер если доступен
         if enable_ml_ranking and ML_AVAILABLE:
@@ -38,19 +39,30 @@ class HabrSearchEngine:
             except Exception as e:
                 print(f"ML-ранкинг недоступен: {e}")
                 self.enable_ml_ranking = False
-        else:
-            self.enable_ml_ranking = False
 
         # Инициализируем предсказатель тегов если доступен
         if enable_tag_prediction and TAG_PREDICTION_AVAILABLE:
             try:
-                self.tag_predictor = TagPredictor()
+                self.tag_predictor = TagPredictor(model_path='ml/tag_predictor_model.pkl', vectorizer_path='ml/tag_vectorizer.pkl')
                 print("AI-теги активированы")
             except Exception as e:
                 print(f"AI-теги недоступны: {e}")
                 self.enable_tag_prediction = False
-        else:
-            self.enable_tag_prediction = False
+
+        # Инициализация ruBert-предсказателя тегов
+        if self.enable_rubert_tag_prediction:
+            try:
+                from ml.rubert.rubert_best.train_predictor_rubert_v2 import RubertTagPredictor_v2
+                self.rubert_tag_predictor = RubertTagPredictor_v2(
+                    model_path='ml/rubert/rubert_best/rubert_tag_predictor_v2.pth',
+                    config_path='ml/rubert/rubert_best/rubert_config_v2.pkl',
+                    tokenizer_path='ml/rubert/rubert_best/rubert_tokenizer_v2',
+                    mlb_path='ml/rubert/rubert_best/rubert_mlb_v2.pkl',
+                )
+                print("AI-теги от ruBert активированы")
+            except Exception as e:
+                self.rubert_tag_predictor = None
+                print(f"Не удалось подключить ruBert-предсказыватель тегов: {e}")
 
         if not self.es.ping():
             raise ConnectionError("Не удалось подключиться к Elasticsearch")
@@ -145,6 +157,11 @@ class HabrSearchEngine:
         if not self.enable_tag_prediction or not hasattr(self, 'tag_predictor'):
             return []
         return self.tag_predictor.predict_tags(title, text)
+
+    def predict_article_tags_by_ruBert(self, title, text):
+        if not self.enable_rubert_tag_prediction or not hasattr(self, 'rubert_tag_predictor'):
+            return []
+        return self.rubert_tag_predictor.predict_tags(title, text)
 
     def search_articles(self, query, size=10, search_type="simple", use_ml_ranking=None):
         """Поиск статей с различными типами запросов с возможностью ML-ранжирования"""
@@ -326,6 +343,8 @@ class HabrSearchEngine:
             features.append("ML-ранжирование")
         if hasattr(self, 'enable_tag_prediction') and self.enable_tag_prediction:
             features.append("AI-теги")
+        if hasattr(self, 'enable_rubert_tag_prediction') and self.enable_rubert_tag_prediction:
+            features.append("AI-теги by ruBert")
 
         if features:
             print(f"Функции: {', '.join(features)}")
@@ -372,6 +391,15 @@ class HabrSearchEngine:
                 if predicted_tags:
                     tags_str = ', '.join([f"{tag['tag']} ({tag['confidence']})" for tag in predicted_tags[:3]])
                     print(f"AI-теги: {tags_str}")
+
+            # ruBert предсказывание тегов
+            if self.enable_rubert_tag_prediction:
+                text = source.get('text', '')[:512]
+                predicted_tags = self.predict_article_tags_by_ruBert(source['title'], text)
+                if predicted_tags:
+                    tags_str = ', '.join([f"{tag['tag']} ({tag['confidence']})" for tag in predicted_tags[:3]])
+                    print(f"ruBert AI-теги: {tags_str}")
+
 
             # Дополнительная информация о скоринге
             if ml_info:

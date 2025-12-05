@@ -53,7 +53,7 @@ class TagPredictor:
             predicted_tags = []
 
             for idx in top_indices:
-                if probabilities[idx] > 0.1:
+                if probabilities[idx] > 0.2:
                     predicted_tags.append({
                         'tag': self.all_tags[idx],
                         'confidence': round(probabilities[idx], 3)
@@ -74,12 +74,23 @@ def extract_tags(tags_str):
     return [tag.strip() for tag in clean_tags.split(',') if tag.strip()]
 
 
-def filter_rare_tags(tag_lists, min_count=5):
+def filter_rare_tags(tag_lists, min_count=70):
     """Фильтрует редкие теги, которые встречаются меньше min_count раз"""
     # Считаем частоту тегов
     tag_counter = Counter()
     for tags in tag_lists:
         tag_counter.update(tags)
+
+    # Добавьте в функцию filter_rare_tags:
+    print("ТЕГИ, КОТОРЫЕ ЕСТЬ ВО ВСЕХ СТАТЬЯХ:")
+    for tag, count in tag_counter.items():
+        if count == len(tag_lists):
+            print(f"  {tag}: {count}/{len(tag_lists)} статей")
+
+    # И посмотреть на распределение тегов
+    print("\nРАСПРЕДЕЛЕНИЕ ТЕГОВ:")
+    for tag, count in tag_counter.most_common(60):
+        print(f"  {tag}: {count} статей")
 
     print(f"Всего уникальных тегов до фильтрации: {len(tag_counter)}")
 
@@ -94,8 +105,8 @@ def filter_rare_tags(tag_lists, min_count=5):
         filtered_tags = [tag for tag in tags if tag in frequent_tags]
         filtered_tag_lists.append(filtered_tags)
 
-    print("\nТОП-20 САМЫХ ЧАСТЫХ ТЕГОВ:")
-    for tag, count in tag_counter.most_common(20):
+    print("\nТОП 200 САМЫХ ЧАСТЫХ ТЕГОВ:")
+    for tag, count in tag_counter.most_common(200):
         print(f"  {tag}: {count} статей")
 
     return filtered_tag_lists, frequent_tags
@@ -110,8 +121,8 @@ def evaluate_model(model, X_test, y_test):
     # Предсказания вероятностей
     y_pred_proba = model.predict_proba(X_test)
 
-    # Преобразуем в бинарные предсказания по порогу 0.1
-    y_pred = (y_pred_proba > 0.1).astype(int)
+    # Преобразуем в бинарные предсказания по порогу 0.2
+    y_pred = (y_pred_proba > 0.2).astype(int)
 
     print("ОСНОВНЫЕ МЕТРИКИ:")
     print(f"Precision (micro): {precision_score(y_test, y_pred, average='micro', zero_division=0):.4f}")
@@ -119,7 +130,7 @@ def evaluate_model(model, X_test, y_test):
     print(f"F1-Score (micro): {f1_score(y_test, y_pred, average='micro', zero_division=0):.4f}")
 
 
-def train_tag_predictor_with_evaluation(df, test_size=0.2, min_tag_count=5):
+def train_tag_predictor_with_evaluation(df, test_size=0.2, min_tag_count=70):
     print("Обучение модели с разделернием train/test и оценкой...")
 
     df['combined_text'] = df['title'] + ' ' + df['text']
