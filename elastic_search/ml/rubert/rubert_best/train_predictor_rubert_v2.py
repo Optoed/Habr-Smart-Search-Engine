@@ -43,14 +43,14 @@ class MultiLabelBERT(nn.Module):
         self.config = self.bert.config
 
         # Классификатор для multi-label
-        hidden_size = self.config.hidden_size
-        self.dropout = nn.Dropout(0.1)
-        self.classifier = nn.Linear(hidden_size, num_labels)
+        hidden_size = self.config.hidden_size # BERT преобразует каждый токен в вектор размерности hidden_size
+        self.dropout = nn.Dropout(0.1) # Техника регуляризации для борьбы с переобучением - выключает 10% нейронов во время обучения
+        self.classifier = nn.Linear(hidden_size, num_labels) # Преобразует hidden_size-мерный вектор в num_labels-мерный вектор
         self.sigmoid = nn.Sigmoid()
         self.num_labels = num_labels
 
     def forward(self, input_ids, attention_mask, token_type_ids=None, labels=None):
-        # Прямой проход через BERT
+        # Прямой проход через BERT - получим dict, в нем last_hidden_state = эмбеддинги для каждого токена (3d-форма: [batch_size, seq_len, hidden_size])
         outputs = self.bert(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -58,9 +58,9 @@ class MultiLabelBERT(nn.Module):
             return_dict=True
         )
 
-        # Берем embedding [CLS] токена
-        pooled_output = outputs.last_hidden_state[:, 0, :]
-        pooled_output = self.dropout(pooled_output)
+        # Берем embedding [CLS] токена - первый токен CLS содержит сжатую информацию о всём тексте
+        pooled_output = outputs.last_hidden_state[:, 0, :] # = [batch_size x hidden_size (только CLS токен)]
+        pooled_output = self.dropout(pooled_output) # Применяем dropout к эмбеддингу [CLS] только во время обучения
 
         # Логиты для каждого класса
         logits = self.classifier(pooled_output)
@@ -71,8 +71,8 @@ class MultiLabelBERT(nn.Module):
         # Вычисляем loss если есть labels
         loss = None
         if labels is not None:
-            loss_fct = nn.BCELoss()  # Binary Cross Entropy для multi-label
-            loss = loss_fct(probabilities, labels)
+            loss_fct = nn.BCELoss()  # Binary Cross Entropy для multi-label = loss = -[y * log(p) + (1-y) * log(1-p)]
+            loss = loss_fct(probabilities, labels) # возьмем среднее из всех loss по каждому тэгу (формула выше)
 
         return {'loss': loss, 'logits': probabilities}
 
