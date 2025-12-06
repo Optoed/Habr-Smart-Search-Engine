@@ -23,6 +23,17 @@ from datetime import datetime
 VERSION = "v2"
 MODEL_NAME = "cointegrated/rubert-tiny2"
 
+def time_based_split(df, test_size=0.2):
+    # Сортируем по дате
+    df_sorted = df.sort_values('date')
+
+    split_idx = int(len(df_sorted) * (1 - test_size))
+
+    # Разделяем вручную
+    train_df = df_sorted.iloc[:split_idx]
+    test_df = df_sorted.iloc[split_idx:]
+
+    return train_df, test_df
 
 class MultiLabelBERT(nn.Module):
     def __init__(self, model_name, num_labels):
@@ -32,14 +43,14 @@ class MultiLabelBERT(nn.Module):
         self.config = self.bert.config
 
         # Классификатор для multi-label
-        hidden_size = self.config.hidden_size
-        self.dropout = nn.Dropout(0.1)
-        self.classifier = nn.Linear(hidden_size, num_labels)
+        hidden_size = self.config.hidden_size # BERT преобразует каждый токен в вектор размерности hidden_size
+        self.dropout = nn.Dropout(0.1) # Техника регуляризации для борьбы с переобучением - выключает 10% нейронов во время обучения
+        self.classifier = nn.Linear(hidden_size, num_labels) # Преобразует hidden_size-мерный вектор в num_labels-мерный вектор
         self.sigmoid = nn.Sigmoid()
         self.num_labels = num_labels
 
     def forward(self, input_ids, attention_mask, token_type_ids=None, labels=None):
-        # Прямой проход через BERT
+        # Прямой проход через BERT - получим dict, в нем last_hidden_state = эмбеддинги для каждого токена (3d-форма: [batch_size, seq_len, hidden_size])
         outputs = self.bert(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -47,9 +58,9 @@ class MultiLabelBERT(nn.Module):
             return_dict=True
         )
 
-        # Берем embedding [CLS] токена
-        pooled_output = outputs.last_hidden_state[:, 0, :]
-        pooled_output = self.dropout(pooled_output)
+        # Берем embedding [CLS] токена - первый токен CLS содержит сжатую информацию о всём тексте
+        pooled_output = outputs.last_hidden_state[:, 0, :] # = [batch_size x hidden_size (только CLS токен)]
+        pooled_output = self.dropout(pooled_output) # Применяем dropout к эмбеддингу [CLS] только во время обучения
 
         # Логиты для каждого класса
         logits = self.classifier(pooled_output)
@@ -60,8 +71,8 @@ class MultiLabelBERT(nn.Module):
         # Вычисляем loss если есть labels
         loss = None
         if labels is not None:
-            loss_fct = nn.BCELoss()  # Binary Cross Entropy для multi-label
-            loss = loss_fct(probabilities, labels)
+            loss_fct = nn.BCELoss()  # Binary Cross Entropy для multi-label = loss = -[y * log(p) + (1-y) * log(1-p)]
+            loss = loss_fct(probabilities, labels) # возьмем среднее из всех loss по каждому тэгу (формула выше)
 
         return {'loss': loss, 'logits': probabilities}
 
@@ -149,11 +160,12 @@ def main():
         return
 
     # 2. Подготовка текста
-    df["clean_text"] = (df["title"].fillna("") + " " + df["text"].fillna("")).apply(clean_text)
+
+    df["combined_text"] = (df["title"].fillna("") + " " + df["text"].fillna("")).apply(clean_text)
 
     # Удаляем пустые тексты
     initial_count = len(df)
-    df = df[df["clean_text"].str.strip().str.len() > 10].copy()
+    df = df[df["combined_text"].str.strip().str.len() > 10].copy()
     print(f"Текст очищен. Осталось {len(df)} статей (удалено {initial_count - len(df)})")
 
     # 3. Извлечение и фильтрация тегов
@@ -167,7 +179,7 @@ def main():
     print(f"\nСтатистика тегов:")
     print(f"   Всего уникальных тегов: {len(tag_counter)}")
     print(f"   Статей с тегами: {sum(1 for tl in tag_lists if len(tl) > 0)}/{len(df)}")
-    print(f"   Теги: {tag_counter.items()}")
+    print(f"   Теги: {tag_counter.most_common(200)}")
 
     # Фильтрация редких тегов
     MIN_TAG_COUNT = 90 # 90 подбирал вручную
@@ -183,7 +195,7 @@ def main():
     print(f"   Осталось тегов: {len(freq_tags)}")
     print(f"   Статей с тегами: {len(tag_lists)}")
 
-    print(tag_lists)
+    print(tag_lists[:200])
 
     # 4. Преобразование тегов в бинарный формат
     mlb = MultiLabelBinarizer(classes=sorted(list(freq_tags)))
@@ -196,11 +208,25 @@ def main():
     joblib.dump(mlb, mlb_filename)
     print(f"MultiLabelBinarizer сохранен в {mlb_filename}")
 
-    # 5. Разделение данных
-    X = df["clean_text"].tolist()
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, Y, test_size=0.2, random_state=42, shuffle=True # TODO: time split
-    )
+    # 5. Разделение данных по времени
+    # X = df["combined_text"].tolist()
+    # X_train, X_test, y_train, y_test = train_test_split(
+    #   X, Y, test_size=0.2, random_state=42, shuffle=True # TODO: time split
+    # )
+
+    df = df.reset_index(drop=True)
+
+    train_df, test_df = time_based_split(df, test_size=0.2)
+
+    y_train = Y[train_df.index.tolist()]
+    y_test = Y[test_df.index.tolist()]
+
+    # Сбрасываем индексы только для текстов
+    train_df = train_df.reset_index(drop=True)
+    test_df = test_df.reset_index(drop=True)
+
+    X_train = train_df['combined_text']
+    X_test = test_df['combined_text']
 
     print(f"\nРазделение данных:")
     print(f"   Обучающая выборка: {len(X_train)} статей")
@@ -450,3 +476,6 @@ if __name__ == "__main__":
     # Тест на выдуманных примерах
     print("\n" + "="*50)
     test_predictor()
+
+
+
