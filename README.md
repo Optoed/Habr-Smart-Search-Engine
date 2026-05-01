@@ -1,4 +1,4 @@
-# Habr Search Engine
+# Habr Smart Search Engine
 
 <div align="center">
 
